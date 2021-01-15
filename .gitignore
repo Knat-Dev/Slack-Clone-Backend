@@ -1,0 +1,9 @@
+node_modules
+build
+.env
+.env.production
+Dockerfile
+.dockerignore
+yarn-error.log
+package-lock.json
+deploy.sh
