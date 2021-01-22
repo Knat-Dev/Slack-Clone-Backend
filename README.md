@@ -15,6 +15,7 @@ Visit the application at [https://slack.knat.dev](https://slack.knat.dev).
 - Typescript
 - Node.JS (Running [Express](https://expressjs.com/) and [express-graphql](https://github.com/graphql/express-graphql)
 - GraphQL + Type-GraphQL
+- GraphQL Subscriptions - using Redis and [Redis GraphQL Subscriptions](https://github.com/davidyaha/graphql-redis-subscriptions)
 - Apollo Server
 - JWT based authentication
 - Mongoose + Typegoose (MongoDB ODM for Typescript).
