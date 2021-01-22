@@ -12,6 +12,7 @@ import mongoose, { ConnectionOptions } from "mongoose";
 import path from "path";
 import "reflect-metadata";
 import { buildSchema } from "type-graphql";
+import cookie from "cookie";
 import {
 	ChannelResolver,
 	DirectMessageResolver,
@@ -70,7 +71,12 @@ const mongooseConnectionOptions: ConnectionOptions = {
 		uploads: false,
 		subscriptions: {
 			onDisconnect: async (ws, context) => {
-				const ctx = await context.initPromise;
+				let ctx = null;
+				try {
+					ctx = await context.initPromise;
+				} catch (e) {
+					console.log("problem");
+				}
 				if (ctx) {
 					const { userId } = ctx;
 					try {
@@ -89,6 +95,7 @@ const mongooseConnectionOptions: ConnectionOptions = {
 			},
 			onConnect: async (connectionParams, _ws, context) => {
 				const { token } = connectionParams as { token: string };
+
 				if (token) {
 					try {
 						const data = verify(token, `${process.env.JWT_ACCESS_TOKEN_SECRET}`) as {
@@ -108,8 +115,11 @@ const mongooseConnectionOptions: ConnectionOptions = {
 							} else return false;
 						} else {
 							if (context.request.headers.cookie) {
+								const parsedCookie = cookie.parse(context.request.headers.cookie) as {
+									nwid: string;
+								};
 								const refreshToken: any = verify(
-									context.request.headers.cookie.split("=")[1],
+									parsedCookie.nwid,
 									`${process.env.JWT_REFRESH_TOKEN_SECRET}`
 								);
 								if (refreshToken.userId) {
@@ -129,10 +139,14 @@ const mongooseConnectionOptions: ConnectionOptions = {
 						}
 					} catch (e) {
 						if (context.request.headers.cookie) {
+							const parsedCookie = cookie.parse(context.request.headers.cookie) as {
+								nwid: string;
+							};
 							const refreshToken: any = verify(
-								context.request.headers.cookie.split("=")[1],
+								parsedCookie.nwid,
 								`${process.env.JWT_REFRESH_TOKEN_SECRET}`
 							);
+
 							if (refreshToken.userId) {
 								const user = await UserModel.findOneAndUpdate(
 									{ _id: refreshToken.userId },
@@ -153,8 +167,11 @@ const mongooseConnectionOptions: ConnectionOptions = {
 					}
 				} else {
 					if (context.request.headers.cookie) {
+						const parsedCookie = cookie.parse(context.request.headers.cookie) as {
+							nwid: string;
+						};
 						const refreshToken: any = verify(
-							context.request.headers.cookie.split("=")[1],
+							parsedCookie.nwid,
 							`${process.env.JWT_REFRESH_TOKEN_SECRET}`
 						);
 						if (refreshToken.userId) {
