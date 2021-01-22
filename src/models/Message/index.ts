@@ -41,10 +41,11 @@ export class Message {
 	public channel?: Channel;
 
 	@Field(() => String)
+	@prop()
 	createdAt?: Date;
 
 	@Field(() => String)
-	@prop({})
+	@prop()
 	updatedAt?: Date;
 }
 
