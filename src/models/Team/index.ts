@@ -6,8 +6,6 @@ import {
 	Severity,
 } from "@typegoose/typegoose";
 import { Field, Float, ID, ObjectType } from "type-graphql";
-import { Channel } from "../Channel";
-import { DirectMessage } from "../DirectMessage";
 import { User } from "../User";
 
 @ObjectType()

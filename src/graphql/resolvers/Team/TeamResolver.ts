@@ -5,21 +5,17 @@ import {
 	Ctx,
 	Field,
 	FieldResolver,
-	ID,
 	Mutation,
 	ObjectType,
 	Query,
 	Resolver,
 	Root,
-	Subscription,
 	UseMiddleware,
 } from "type-graphql";
 import validator from "validator";
 import {
 	Channel,
 	ChannelModel,
-	DirectMessage,
-	DirectMessageModel,
 	Team,
 	TeamModel,
 	User,
@@ -52,8 +48,6 @@ class CreateTeamResponse {
 	@Field(() => [FieldError], { nullable: true })
 	errors?: FieldError[];
 }
-
-export const NEW_USER_STATUS = "NEW_USER_STATUS";
 
 @Resolver(() => Team)
 export class TeamResolver {
@@ -175,30 +169,6 @@ export class TeamResolver {
 		});
 	}
 
-	@FieldResolver(() => [User], { nullable: true })
-	async directMessages(
-		@Root() { id }: DocumentType<Team>,
-		@Ctx() { payload }: Context
-	): Promise<User[] | null> {
-		if (!payload?.userId) return null;
-		const directMessages = await DirectMessageModel.find({
-			teamId: id,
-			$or: [
-				{
-					senderId: (payload.userId as unknown) as mongoose.Types.ObjectId,
-				},
-				{
-					receiverId: (payload.userId as unknown) as mongoose.Types.ObjectId,
-				},
-			],
-		});
-		const senderIds = directMessages.map((message) => message.senderId);
-		const receiverIds = directMessages.map((message) => message.receiverId);
-		return UserModel.find({
-			$or: [{ _id: { $in: senderIds } }, { _id: { $in: receiverIds } }],
-		});
-	}
-
 	@FieldResolver(() => Boolean)
 	admin(@Root() team: DocumentType<Team>, @Ctx() { payload }: Context): boolean {
 		if (team.ownerId && payload?.userId)
@@ -262,62 +232,5 @@ export class TeamResolver {
 		return await UserModel.find({
 			teamIds: { $elemMatch: { $eq: teamId } },
 		});
-	}
-
-	@Query(() => [User])
-	@UseMiddleware(isAuthorized)
-	async userStatuses(
-		@Arg("teamId") teamId: string,
-		@Ctx() { payload }: Context
-	): Promise<DocumentType<User>[]> {
-		if (!payload?.userId) return [];
-		const channels = await ChannelModel.find({
-			teamId,
-			dm: true,
-			public: false,
-			userIds: { $elemMatch: { $eq: [payload.userId] } },
-		});
-
-		const idArrs = channels
-			.map((channel) => channel.userIds?.map((id: any) => id[0]))
-			.map((idArr) => {
-				return idArr?.map((id) => {
-					return id;
-				});
-			});
-
-		const ids: string[] = [];
-
-		idArrs.forEach((arr) => {
-			arr?.forEach((id) => {
-				if (!ids.includes(id) && id !== payload.userId) ids.push(id);
-			});
-		});
-		try {
-			const users = await UserModel.find({ _id: { $in: ids } });
-			return users;
-		} catch (e) {
-			console.log(e);
-			return [];
-		}
-	}
-
-	@Subscription(() => User, {
-		nullable: true,
-		topics: NEW_USER_STATUS,
-		filter: async ({ payload, args }) => {
-			const team = await TeamModel.findOne({ _id: args.teamId });
-			const teamIds: string[] = [];
-			payload.teamIds.forEach((idArr: string[]) => {
-				teamIds.push(idArr[0]);
-			});
-			return !!team && teamIds.includes(args.teamId);
-		},
-	})
-	newUserStatus(
-		@Root() team: DocumentType<Team>,
-		@Arg("teamId") teamId: string
-	): Team {
-		return { ...team, id: team._id };
 	}
 }

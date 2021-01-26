@@ -18,9 +18,16 @@ import {
 	Query,
 	Resolver,
 	Root,
+	Subscription,
 	UseMiddleware,
 } from "type-graphql";
-import { Team, TeamModel, User, UserModel } from "../../../models";
+import {
+	ChannelModel,
+	Team,
+	TeamModel,
+	User,
+	UserModel,
+} from "../../../models";
 import { Context } from "../../context";
 import {
 	createAccessToken,
@@ -29,6 +36,8 @@ import {
 	sendRefreshToken,
 } from "../../../util";
 import { FieldError } from "../types";
+
+export const NEW_USER_STATUS = "NEW_USER_STATUS";
 
 @ObjectType()
 class RegisterResponse {
@@ -64,28 +73,6 @@ export class UserResolver {
 	async users(): Promise<DocumentType<User>[]> {
 		return await UserModel.find();
 	}
-
-	// @Query(() => User, { nullable: true })
-	// async me(@Ctx() context: Context): Promise<DocumentType<User> | null> {
-	// 	const { req } = context;
-	// 	const authorization = req.headers["authorization"];
-	// 	console.log(authorization);
-	// 	if (!authorization) return null;
-	// 	const token = authorization.split(" ")[1];
-	// 	console.log("me");
-
-	// 	let payload: any;
-	// 	try {
-	// 		payload = verify(token, `${process.env.JWT_ACCESS_TOKEN_SECRET}`);
-	// 		context.payload = payload as { userId: string };
-	// 	} catch (e) {
-	// 		console.error(e.message);
-	// 		return null;
-	// 	}
-	// 	return await UserModel.findById(
-	// 		mongoose.Types.ObjectId(`${context.payload.userId}`)
-	// 	);
-	// }
 
 	@Mutation(() => RegisterResponse)
 	async register(
@@ -242,5 +229,65 @@ export class UserResolver {
 			],
 		}).sort({ name: 1 });
 		return teams;
+	}
+
+	@Query(() => [User])
+	@UseMiddleware(isAuthorized)
+	async userStatuses(
+		@Arg("teamId") teamId: string,
+		@Ctx() { payload }: Context
+	): Promise<DocumentType<User>[]> {
+		if (!payload?.userId) return [];
+		const channels = await ChannelModel.find({
+			teamId,
+			dm: true,
+			public: false,
+			userIds: { $elemMatch: { $eq: [payload.userId] } },
+		});
+
+		const idArrs = channels
+			.map((channel) => (channel.userIds || []).map((id: any) => id[0]))
+			.map((idArr) => (idArr || []).map((id) => id));
+
+		const ids: string[] = [];
+
+		idArrs.forEach((arr) => {
+			arr?.forEach((id) => {
+				if (!ids.includes(id) && id !== payload.userId) ids.push(id);
+			});
+		});
+		try {
+			const users = await UserModel.find({ _id: { $in: ids } });
+			return users;
+		} catch (e) {
+			console.log(e);
+			return [];
+		}
+	}
+
+	@Subscription(() => User, {
+		nullable: true,
+		topics: NEW_USER_STATUS,
+		filter: async ({ payload, args, context }) => {
+			const team = await TeamModel.findOne({ _id: args.teamId });
+			const memberIds: string[] = [];
+			(team?.memberIds || []).forEach((idArr: any) => {
+				memberIds.push(idArr[0]);
+			});
+
+			return (
+				!!team &&
+				payload._id !== context.userId &&
+				((team?.ownerId as mongoose.Types.ObjectId).equals(context.userId) ||
+					memberIds.includes(context.userId))
+			);
+		},
+	})
+	newUserStatus(
+		@Root() user: DocumentType<User>,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		@Arg("teamId") teamId: string
+	): User {
+		return { ...user, id: user._id };
 	}
 }

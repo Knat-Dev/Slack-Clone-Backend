@@ -1,5 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DocumentType, mongoose } from "@typegoose/typegoose";
-import { mongo, Types } from "mongoose";
 import {
 	Arg,
 	Ctx,
@@ -93,9 +93,7 @@ export class ChannelResolver {
 				if (channel) return { ok: true, channel };
 				else {
 					const users = await UserModel.find({ _id: { $in: userIds } });
-					console.log(users);
 					const name = users.map((u) => u.username).join(", ");
-					console.log(name);
 					const channel = await ChannelModel.create({
 						name,
 						teamId,

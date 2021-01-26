@@ -1,4 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ApolloServer } from "apollo-server-express";
+import cookie from "cookie";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -12,10 +14,8 @@ import mongoose, { ConnectionOptions } from "mongoose";
 import path from "path";
 import "reflect-metadata";
 import { buildSchema } from "type-graphql";
-import cookie from "cookie";
 import {
 	ChannelResolver,
-	DirectMessageResolver,
 	MessageResolver,
 	NEW_USER_STATUS,
 	TeamResolver,
@@ -49,11 +49,7 @@ const mongooseConnectionOptions: ConnectionOptions = {
 	// Express Routes
 	app.post("/refresh", refresh);
 	// Creating MongoDB Connection
-	await mongoose.connect(
-		`${process.env.MONGO_URL}`,
-		// "mongodb+srv://knat:CPsICNYzKyDCf3yj@cluster0.iz9mu.mongodb.net/slack-clone?retryWrites=true&w=majority",
-		mongooseConnectionOptions
-	);
+	await mongoose.connect(`${process.env.MONGO_URL}`, mongooseConnectionOptions);
 	console.log("Using RedisPubSub");
 	console.log("MongoDB connection started.");
 	// Setting up Apollo Server to work with the schema
@@ -110,7 +106,6 @@ const mongooseConnectionOptions: ConnectionOptions = {
 							);
 							if (user) {
 								await pubSub.publish(NEW_USER_STATUS, user);
-								// console.log(`${user.username} has logged in`);
 								return { userId: user.id };
 							} else return false;
 						} else {
@@ -130,7 +125,6 @@ const mongooseConnectionOptions: ConnectionOptions = {
 									);
 									if (user) {
 										await pubSub.publish(NEW_USER_STATUS, user);
-										// console.log(`${user.username} has logged in`);
 										return { userId: refreshToken.userId };
 									}
 								}
@@ -155,7 +149,6 @@ const mongooseConnectionOptions: ConnectionOptions = {
 								);
 								if (user) {
 									await pubSub.publish(NEW_USER_STATUS, user);
-									// console.log(`${user.username} has logged in`);
 									return { userId: refreshToken.userId };
 								}
 							}
@@ -182,7 +175,6 @@ const mongooseConnectionOptions: ConnectionOptions = {
 							);
 							if (user) {
 								await pubSub.publish(NEW_USER_STATUS, user);
-								// console.log(`${user.username} has logged in`);
 								return { userId: refreshToken.userId };
 							}
 						}
@@ -194,13 +186,7 @@ const mongooseConnectionOptions: ConnectionOptions = {
 		schema: await buildSchema({
 			pubSub,
 			dateScalarMode: "isoDate",
-			resolvers: [
-				UserResolver,
-				ChannelResolver,
-				TeamResolver,
-				MessageResolver,
-				DirectMessageResolver,
-			],
+			resolvers: [UserResolver, ChannelResolver, TeamResolver, MessageResolver],
 		}),
 		context: async ({ req, res, connection }) => {
 			// If we build the context for subscriptions, return the context generated in the onConnect callback.

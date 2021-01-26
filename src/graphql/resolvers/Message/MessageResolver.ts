@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable no-async-promise-executor */
 import { DocumentType, mongoose } from "@typegoose/typegoose";
 import { createWriteStream } from "fs";
@@ -32,6 +33,7 @@ import { Upload } from "../types";
 
 // Subscription Topics
 const NEW_CHANNEL_MESSAGE = "NEW_CHANNEL_MESSAGE";
+const DELETED_MESSAGE = "DELETED_MESSAGE";
 
 @ObjectType()
 class PaginatedMessages {
@@ -117,7 +119,6 @@ export class MessageResolver {
 		@PubSub() pubsub: PubSubEngine
 	): Promise<boolean> {
 		const { createReadStream, filename, mimetype } = await file;
-		console.log(file);
 		const filesFolder = __dirname + "../../../../../build/files";
 
 		if (!payload?.userId) return false;
@@ -167,7 +168,6 @@ export class MessageResolver {
 						if (!team || !channel || !file) {
 							return resolve(false);
 						}
-						console.log(channel);
 						const message = await MessageModel.create({
 							channelId,
 							userId: payload?.userId,
@@ -189,8 +189,7 @@ export class MessageResolver {
 	async messages(
 		@Arg("channelId") channelId: string,
 		@Arg("cursor", () => String, { nullable: true }) cursor: string,
-		@Ctx() { payload }: Context,
-		@PubSub("NEW_CHANNEL_MESSAGE") pubsub: Publisher<DocumentType<Message>>
+		@Ctx() { payload }: Context
 	): Promise<PaginatedMessages> {
 		const LIMIT = 100 + 1;
 		if (!payload?.userId) return { hasMore: false, page: [] };
@@ -207,7 +206,7 @@ export class MessageResolver {
 			],
 		});
 		if (channelFound) {
-			const options: any = {};
+			const options: mongoose.MongooseFilterQuery<DocumentType<Message>> = {};
 
 			if (cursor)
 				options.createdAt = {
@@ -225,45 +224,29 @@ export class MessageResolver {
 		} else return { hasMore: false, page: [] };
 	}
 
-	@Query(() => [Message])
-	@UseMiddleware(isAuthorized)
-	async newMessages(
-		@Arg("channelId") channelId: string,
-		@Arg("cursor", () => String, { nullable: true }) cursor: string | null
-	): Promise<DocumentType<Message>[]> {
-		if (!cursor)
-			return await MessageModel.find({
-				channelId,
-			});
-		return await await MessageModel.find({
-			channelId,
-			createdAt: { $gt: new Date(parseFloat(cursor)) },
-		});
-	}
-
 	@FieldResolver(() => User, { nullable: true })
 	async user(@Root() { userId }: DocumentType<Message>): Promise<User | null> {
 		return await UserModel.findById(userId);
 	}
 
-	@Mutation(() => Boolean)
+	@Mutation(() => Message, { nullable: true })
 	@UseMiddleware(isAuthorized)
 	async deleteMessage(
 		@Arg("messageId") messageId: string,
 		@Ctx() { payload }: Context,
-		@PubSub(NEW_CHANNEL_MESSAGE) pubsub: Publisher<DocumentType<Message>>
-	): Promise<boolean> {
-		if (!payload?.userId) return false;
+		@PubSub(DELETED_MESSAGE) pubsub: Publisher<DocumentType<Message>>
+	): Promise<Message | null> {
+		if (!payload?.userId) return null;
 		const message = await MessageModel.findById(messageId);
-		if (message?.userId !== (payload.userId as any) || !message) return false;
+		if (message?.userId !== (payload.userId as any) || !message) return null;
 		try {
 			await message.remove();
 		} catch (e) {
 			console.log(e);
-			return false;
+			return null;
 		}
 		pubsub(message);
-		return true;
+		return message;
 	}
 
 	@Subscription(() => Message, {
@@ -277,6 +260,24 @@ export class MessageResolver {
 	})
 	newChannelMessage(
 		@Root() message: DocumentType<Message>,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		@Arg("channelId") channelId: string
+	): Message {
+		return { ...message, id: message._id };
+	}
+
+	@Subscription(() => Message, {
+		nullable: true,
+		topics: DELETED_MESSAGE,
+		filter: async ({ payload, args }) => {
+			const channel = await ChannelModel.findOne({ _id: args.channelId });
+			const team = await TeamModel.findOne({ _id: channel?.teamId });
+			return !!team && payload.channelId === args.channelId;
+		},
+	})
+	deletedMessage(
+		@Root() message: DocumentType<Message>,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		@Arg("channelId") channelId: string
 	): Message {
 		return { ...message, id: message._id };

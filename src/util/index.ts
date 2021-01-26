@@ -25,33 +25,6 @@ export const isAuthorized: MiddlewareFn<Context> = (
 	return next();
 };
 
-export const DirectMessageSubscription: MiddlewareFn = async (
-	{ args, context },
-	next
-) => {
-	const userId = (context as any).userId;
-	const receiverId = args.receiverId;
-	const teamId = args.teamId;
-	try {
-		const team = await TeamModel.findOne({
-			_id: teamId,
-		});
-		if (team) {
-			if (team.memberIds?.includes(userId)) {
-				console.log(userId, team.memberIds);
-				return await next();
-			}
-		} else
-			throw new Error(
-				"Not authorized to listen to this direct message subscription"
-			);
-	} catch (e) {
-		throw new Error(
-			"Not authorized to listen to this direct message subscription"
-		);
-	}
-};
-
 export const createAccessToken = (user: User): string => {
 	return sign(
 		{ userId: user.id, username: user.username },
