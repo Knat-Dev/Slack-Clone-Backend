@@ -34,6 +34,7 @@ import { Upload } from "../types";
 // Subscription Topics
 const NEW_CHANNEL_MESSAGE = "NEW_CHANNEL_MESSAGE";
 const DELETED_MESSAGE = "DELETED_MESSAGE";
+const EDITED_MESSAGE = "EDITED_MESSAGE";
 
 @ObjectType()
 class PaginatedMessages {
@@ -55,7 +56,7 @@ export class MessageResolver {
 		@Ctx() { payload }: Context,
 		@PubSub("NEW_CHANNEL_MESSAGE") pubsub: Publisher<DocumentType<Message>>
 	): Promise<DocumentType<Message> | null> {
-		if (!payload?.userId) return null;
+		if (!payload?.userId || !text.trim()) return null;
 		const session = await mongoose.startSession();
 		session.startTransaction();
 		// check not member and that the channel actually exists in one go
@@ -99,6 +100,7 @@ export class MessageResolver {
 				text: text.trim(),
 				channelId,
 				userId: payload.userId,
+				edited: false,
 			});
 			await pubsub(message);
 			return message;
@@ -173,6 +175,7 @@ export class MessageResolver {
 							userId: payload?.userId,
 							url: `${process.env.HOST_NAME}/files/${filename}`,
 							filetype: mimetype,
+							edited: false,
 						});
 						await pubsub.publish(NEW_CHANNEL_MESSAGE, message);
 						resolve(true);
@@ -249,6 +252,32 @@ export class MessageResolver {
 		return message;
 	}
 
+	@Mutation(() => Message, { nullable: true })
+	@UseMiddleware(isAuthorized)
+	async editMessage(
+		@Arg("messageId") messageId: string,
+		@Arg("text") text: string,
+		@Ctx() { payload }: Context,
+		@PubSub(EDITED_MESSAGE) pubsub: Publisher<DocumentType<Message>>
+	): Promise<Message | null> {
+		if (!payload?.userId) return null;
+		let message = await MessageModel.findById(messageId);
+		if (message?.userId !== (payload.userId as any) || !message) return null;
+		try {
+			message = await MessageModel.findByIdAndUpdate(
+				message.id,
+				{ text: text.trim(), edited: true },
+				{ new: true }
+			);
+			if (!message) throw new Error("Something wrong happened");
+		} catch (e) {
+			console.log(e);
+			return null;
+		}
+		pubsub(message);
+		return message;
+	}
+
 	@Subscription(() => Message, {
 		nullable: true,
 		topics: NEW_CHANNEL_MESSAGE,
@@ -276,6 +305,23 @@ export class MessageResolver {
 		},
 	})
 	deletedMessage(
+		@Root() message: DocumentType<Message>,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		@Arg("channelId") channelId: string
+	): Message {
+		return { ...message, id: message._id };
+	}
+
+	@Subscription(() => Message, {
+		nullable: true,
+		topics: EDITED_MESSAGE,
+		filter: async ({ payload, args }) => {
+			const channel = await ChannelModel.findOne({ _id: args.channelId });
+			const team = await TeamModel.findOne({ _id: channel?.teamId });
+			return !!team && payload.channelId === args.channelId;
+		},
+	})
+	editedMessage(
 		@Root() message: DocumentType<Message>,
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		@Arg("channelId") channelId: string

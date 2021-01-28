@@ -37,6 +37,10 @@ export class Message {
 	@prop({ required: true })
 	public channelId!: Ref<Channel>;
 
+	@Field(() => Boolean, { defaultValue: false })
+	@prop({ default: false })
+	public edited!: boolean;
+
 	@Field(() => Channel)
 	public channel?: Channel;
 

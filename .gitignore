@@ -7,3 +7,4 @@ Dockerfile
 yarn-error.log
 package-lock.json
 deploy.sh
+mongo.secret
