@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { DocumentType, mongoose } from "@typegoose/typegoose";
+import { MongooseFilterQuery, MongooseUpdateQuery } from "mongoose";
 import {
 	Arg,
 	Ctx,
@@ -8,6 +9,8 @@ import {
 	InputType,
 	Mutation,
 	ObjectType,
+	Publisher,
+	PubSub,
 	Resolver,
 	Root,
 	UseMiddleware,
@@ -22,6 +25,8 @@ import {
 import { isAuthorized } from "../../../util";
 import { Context } from "../../context";
 import { FieldError } from "../types";
+import { NEW_TYPING_USER } from "../User/UserResolver";
+import { TypingUser } from "./TypingUser";
 
 @ObjectType()
 class ChannelResponse {
@@ -142,5 +147,48 @@ export class ChannelResolver {
 	@FieldResolver()
 	async users(@Root() { userIds }: DocumentType<Channel>): Promise<User[]> {
 		return await UserModel.find({ _id: { $in: userIds } });
+	}
+
+	@Mutation(() => TypingUser, { nullable: true })
+	@UseMiddleware(isAuthorized)
+	async setUserTyping(
+		@Arg("channelId") channelId: string,
+		@Arg("isTyping") isTyping: boolean,
+		@Ctx() { payload }: Context,
+		@PubSub(NEW_TYPING_USER) pubsub: Publisher<TypingUser>
+	): Promise<TypingUser | null> {
+		if (!payload?.userId) return null;
+
+		const filters: MongooseFilterQuery<Channel> = {};
+		const updates: MongooseUpdateQuery<Channel> = {};
+
+		if (isTyping) {
+			filters.typingUserIds = {
+				$not: { $elemMatch: { $eq: mongoose.Types.ObjectId(payload.userId) } },
+			};
+			updates.$push = {
+				typingUserIds: mongoose.Types.ObjectId(payload.userId),
+			};
+		} else {
+			filters.typingUserIds = {
+				$elemMatch: { $eq: mongoose.Types.ObjectId(payload.userId) },
+			};
+			updates.$pull = {
+				typingUserIds: mongoose.Types.ObjectId(payload.userId),
+			};
+		}
+
+		await ChannelModel.findOneAndUpdate({ _id: channelId, ...filters }, updates);
+		const user = await UserModel.findById(payload.userId);
+
+		if (!user) return null;
+		const obj = {
+			username: user.username,
+			id: user.id,
+			typing: isTyping,
+			channelId,
+		};
+		pubsub(obj);
+		return obj;
 	}
 }

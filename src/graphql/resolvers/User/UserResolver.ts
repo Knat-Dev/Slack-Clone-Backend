@@ -36,8 +36,10 @@ import {
 	sendRefreshToken,
 } from "../../../util";
 import { FieldError } from "../types";
+import { TypingUser } from "../Channel/TypingUser";
 
 export const NEW_USER_STATUS = "NEW_USER_STATUS";
+export const NEW_TYPING_USER = "NEW_TYPING_USER";
 
 @ObjectType()
 class RegisterResponse {
@@ -289,5 +291,49 @@ export class UserResolver {
 		@Arg("teamId") teamId: string
 	): User {
 		return { ...user, id: user._id };
+	}
+
+	@Query(() => [User])
+	@UseMiddleware(isAuthorized)
+	async typingUsers(
+		@Arg("channelId") channelId: string
+	): Promise<DocumentType<User>[]> {
+		const channel = await ChannelModel.findById(channelId);
+		if (channel) {
+			return await UserModel.find({ _id: { $in: channel.typingUserIds } });
+		}
+		return [];
+	}
+
+	@Subscription(() => TypingUser, {
+		nullable: true,
+		topics: NEW_TYPING_USER,
+		filter: async ({ payload, args, context }) => {
+			// console.log(payload, args, context);
+			// return payload.id !== context.userId;
+			const channel = await ChannelModel.findOne({
+				_id: args.channelId,
+				$or: [
+					{ public: true },
+					{
+						userIds: {
+							$elemMatch: { $eq: [context.userId] },
+						},
+					},
+				],
+			});
+			return (
+				!!channel &&
+				payload.channelId === args.channelId &&
+				payload.id !== context.userId
+			);
+		},
+	})
+	newTypingUser(
+		@Root() user: TypingUser,
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		@Arg("channelId") teamId: string
+	): TypingUser {
+		return user;
 	}
 }

@@ -17,11 +17,13 @@ import { buildSchema } from "type-graphql";
 import {
 	ChannelResolver,
 	MessageResolver,
+	NEW_TYPING_USER,
 	NEW_USER_STATUS,
 	TeamResolver,
 	UserResolver,
 } from "./graphql";
-import { UserModel } from "./models";
+import { TypingUser } from "./graphql/resolvers/Channel/TypingUser";
+import { ChannelModel, UserModel } from "./models";
 import { refresh } from "./util";
 dotenv.config();
 
@@ -81,7 +83,23 @@ const mongooseConnectionOptions: ConnectionOptions = {
 							{ online: false },
 							{ new: true }
 						);
-						if (user) await pubSub.publish(NEW_USER_STATUS, user);
+						const channel = await ChannelModel.findOneAndUpdate(
+							{
+								typingUserIds: { $elemMatch: { $eq: mongoose.Types.ObjectId(userId) } },
+							},
+							{ $pull: { typingUserIds: mongoose.Types.ObjectId(userId) } },
+							{ new: true }
+						);
+						if (user) {
+							await pubSub.publish(NEW_USER_STATUS, user);
+							if (channel && !channel.typingUserIds?.includes(userId))
+								await pubSub.publish<TypingUser>(NEW_TYPING_USER, {
+									channelId: channel.id,
+									username: user.username,
+									id: user.id,
+									typing: false,
+								});
+						}
 						return true;
 					} catch (e) {
 						console.log(e);

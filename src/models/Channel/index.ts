@@ -41,6 +41,12 @@ export class Channel {
 	public userIds?: Ref<User>[];
 
 	@Field(() => [User], { defaultValue: [] })
+	public typingUsers?: User[];
+
+	@prop({ default: [] })
+	public typingUserIds?: Ref<User>[];
+
+	@Field(() => [User], { defaultValue: [] })
 	public users?: User[];
 
 	@Field(() => Float)
